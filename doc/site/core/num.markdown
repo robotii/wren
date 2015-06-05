@@ -1,7 +1,20 @@
 ^title Num Class
 ^category core
 
-**TODO**
+## Static Methods
+
+### Num.**fromString**(value)
+
+Attempts to parse `value` as a decimal literal and return it as an instance of
+`Num`. If the number cannot be parsed `null` will be returned.
+
+It is a runtime error if `value` is not a string.
+
+### Num.**pi**
+
+The value of π.
+
+## Methods
 
 ### **abs**
 
@@ -10,9 +23,30 @@ The absolute value of the number.
     :::dart
     -123.abs // 123
 
+### **acos**
+
+The arc cosine of the number.
+
+### **asin**
+
+The arc sine of the number.
+
+### **atan**
+
+The arc tangent of the number.
+
+### **atan**(x)
+
+The arc tangent of the number when divided by `x`, using the signs of the two
+numbers to determine the quadrant of the result.
+
 ### **ceil**
 
-**TODO**
+Rounds the number up to the nearest integer.
+
+    :::dart
+    1.5.ceil // 2
+    (-3.2).ceil // -3
 
 ### **cos**
 
@@ -20,7 +54,11 @@ The cosine of the number.
 
 ### **floor**
 
-**TODO**
+Rounds the number down to the nearest integer.
+
+    :::dart
+    1.5.floor    // 1
+    (-3.2).floor // -4
 
 ### **isNan**
 
@@ -35,6 +73,10 @@ The sine of the number.
 ### **sqrt**
 
 The square root of the number. Returns `nan` if the number is negative.
+
+### **tan**
+
+The tangent of the number.
 
 ### **-** operator
 
@@ -85,15 +127,22 @@ It is a runtime error if `other` is not a number.
 
 ### **..**(other) operator
 
-**TODO**
+Creates a [Range](core/range.html) representing a consecutive range of numbers
+from the beginning number to the ending number.
+
+    :::dart
+    var range = 1.2..3.4
+    IO.print(range.min)         // 1.2
+    IO.print(range.max)         // 3.4
+    IO.print(range.isInclusive) // true
 
 ### **...**(other) operator
 
-**TODO**
+Creates a [Range](core/range.html) representing a consecutive range of numbers
+from the beginning number to the ending number not including the ending number.
 
-### Num.**fromString**(value)
-
-Attempts to parse `value` as a decimal literal and return it as an instance of
-`Num`. If the number cannot be parsed `null` will be returned.
-
-It is a runtime error if `value` is not a string.
+    :::dart
+    var range = 1.2...3.4
+    IO.print(range.min)         // 1.2
+    IO.print(range.max)         // 3.4
+    IO.print(range.isInclusive) // false

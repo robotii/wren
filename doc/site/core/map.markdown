@@ -3,7 +3,9 @@
 
 An associative collection that maps keys to values. More details [here](../maps.html).
 
-### **clear**
+## Methods
+
+### **clear**()
 
 Removes all entries from the map.
 

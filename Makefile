@@ -34,6 +34,7 @@ clean:
 
 # Run the tests against the debug build of Wren.
 test: debug
+	@ $(MAKE) -f script/wren.mk MODE=debug test
 	@ ./script/test.py $(suite)
 
 # Take the contents of the scripts under builtin/ and copy them into their
@@ -51,6 +52,10 @@ watchdocs:
 
 # Build the docs and copy them to a local "gh-pages" directory.
 gh-pages: docs
-	@ cp -r build/docs/. gh-pages
+	@ cp -r build/docs/. build/gh-pages
 
-.PHONY: debug release all clean test builtin docs watchdocs gh-pages
+# Build amalgamation of all Wren library files.
+amalgamation: src/include/wren.h src/vm/*.h src/vm/*.c
+	./script/generate_amalgamation.py > build/wren.c
+
+.PHONY: all amalgamation builtin clean debug docs gh-pages release test watchdocs

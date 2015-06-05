@@ -18,6 +18,8 @@ argument](../functions.html#block-arguments) to some other method.
 
 It is a runtime error if `function` is not a function.
 
+## Methods
+
 ### **arity**
 
 The number of arguments the function requires.
@@ -28,4 +30,15 @@ The number of arguments the function requires.
 
 ### **call**(args...)
 
-**TODO**
+Invokes the function with the given arguments.
+
+    :::dart
+    var fn = new Fn { |arg|
+      IO.print(arg)
+    }
+
+    fn.call("Hello world") // Prints "Hello world".
+
+It is a runtime error if the number of arguments given is less than the arity
+of the function. If more arguments are given than the function's arity they are
+ignored.

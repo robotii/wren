@@ -19,55 +19,68 @@
 # Then, for the libraries, the correct extension is added.
 
 # Files.
-HEADERS   := include/wren.h $(wildcard src/*.h)
-SOURCES   := $(wildcard src/*.c)
+CLI_HEADERS  := $(wildcard src/cli/*.h)
+VM_HEADERS   := $(wildcard src/vm/*.h)
+CLI_SOURCES  := $(wildcard src/cli/*.c)
+VM_SOURCES   := $(wildcard src/vm/*.c)
+TEST_SOURCES := $(shell find test/api -name '*.c')
 BUILD_DIR := build
 
-CFLAGS := -Wall -Werror -Wsign-compare -Wtype-limits -Wuninitialized
-# TODO: Add -Wextra.
+C_WARNINGS := -Wall -Wextra -Werror -Wno-unused-parameter
+# Wren uses callbacks heavily, so -Wunused-parameter is too painful to enable.
 
 # Mode configuration.
 ifeq ($(MODE),debug)
 	WREN := wrend
-	CFLAGS += -O0 -DDEBUG -g
+	C_OPTIONS += -O0 -DDEBUG -g
 	BUILD_DIR := $(BUILD_DIR)/debug
 else
 	WREN += wren
-	CFLAGS += -Os
+	C_OPTIONS += -Os
 	BUILD_DIR := $(BUILD_DIR)/release
 endif
 
 # Language configuration.
 ifeq ($(LANG),cpp)
 	WREN := $(WREN)-cpp
-	CFLAGS += -std=c++98
+	C_OPTIONS += -std=c++98
 	FILE_FLAG := -x c++
 	BUILD_DIR := $(BUILD_DIR)-cpp
 else
-	CFLAGS += -std=c99
+	C_OPTIONS += -std=c99
 endif
 
 # Architecture configuration.
 ifeq ($(ARCH),32)
-	CFLAGS += -m32
+	C_OPTIONS += -m32
 	WREN := $(WREN)-32
 	BUILD_DIR := $(BUILD_DIR)-32
 endif
 
 ifeq ($(ARCH),64)
-	CFLAGS += -m64
+	C_OPTIONS += -m64
 	WREN := $(WREN)-64
 	BUILD_DIR := $(BUILD_DIR)-64
 endif
 
+# Some platform-specific workarounds. Note that we use "gcc" explicitly in the
+# call to get the machine name because one of these workarounds deals with $(CC)
+# itself not working.
+OS := $(lastword $(subst -, ,$(shell gcc -dumpmachine)))
+
 # Don't add -fPIC on Windows since it generates a warning which gets promoted
 # to an error by -Werror.
-OS := $(lastword $(subst -, ,$(shell $(CC) -dumpmachine)))
 ifeq      ($(OS),mingw32)
 else ifeq ($(OS),cygwin)
 	# Do nothing.
 else
-	CFLAGS += -fPIC
+	C_OPTIONS += -fPIC
+endif
+
+# MinGW--or at least some versions of it--default CC to "cc" but then don't
+# provide an executable named "cc". Manually point to "gcc" instead.
+ifeq ($(OS),mingw32)
+	CC = GCC
 endif
 
 # Clang on Mac OS X has different flags and a different extension to build a
@@ -79,30 +92,60 @@ else
 	SHARED_EXT := so
 endif
 
-# TODO: Simplify this if we mode main.c to a different directory.
-OBJECTS := $(addprefix $(BUILD_DIR)/, $(notdir $(SOURCES:.c=.o)))
-# Don't include main.c in the libraries.
-LIB_OBJECTS := $(subst $(BUILD_DIR)/main.o,,$(OBJECTS))
+CFLAGS := $(C_OPTIONS) $(C_WARNINGS)
+
+CLI_OBJECTS  := $(addprefix $(BUILD_DIR)/cli/, $(notdir $(CLI_SOURCES:.c=.o)))
+VM_OBJECTS   := $(addprefix $(BUILD_DIR)/vm/, $(notdir $(VM_SOURCES:.c=.o)))
+TEST_OBJECTS := $(patsubst test/api/%.c, $(BUILD_DIR)/test/%.o, $(TEST_SOURCES))
 
 # Targets ---------------------------------------------------------------------
 
-all: prep bin/$(WREN) lib/lib$(WREN).a lib/lib$(WREN).$(SHARED_EXT)
+# Builds the VM libraries and CLI interpreter.
+all: bin/$(WREN) lib/lib$(WREN).a lib/lib$(WREN).$(SHARED_EXT)
 
-prep:
-	@mkdir -p bin lib $(BUILD_DIR)
+# Builds the API test executable.
+test: $(BUILD_DIR)/test/$(WREN)
 
 # Command-line interpreter.
-bin/$(WREN): $(OBJECTS)
-	$(CC) $(CFLAGS) -Iinclude -o $@ $^ -lm
+bin/$(WREN): $(CLI_OBJECTS) $(VM_OBJECTS)
+	@printf "%10s %-30s %s\n" $(CC) $@ "$(C_OPTIONS)"
+	@mkdir -p bin
+	@$(CC) $(CFLAGS) -o $@ $^ -lm
 
 # Static library.
-lib/lib$(WREN).a: $(LIB_OBJECTS)
-	$(AR) rcu $@ $^
+lib/lib$(WREN).a: $(VM_OBJECTS)
+	@printf "%10s %-30s %s\n" $(AR) $@ "rcu"
+	@mkdir -p lib
+	@$(AR) rcu $@ $^
 
 # Shared library.
-lib/lib$(WREN).$(SHARED_EXT): $(LIB_OBJECTS)
-	$(CC) $(CFLAGS) -shared $(SHARED_LIB_FLAGS) -o $@ $^
+lib/lib$(WREN).$(SHARED_EXT): $(VM_OBJECTS)
+	@printf "%10s %-30s %s\n" $(CC) $@ "$(C_OPTIONS) $(SHARED_LIB_FLAGS)"
+	@mkdir -p lib
+	@$(CC) $(CFLAGS) -shared $(SHARED_LIB_FLAGS) -o $@ $^
 
-# Object files.
-$(BUILD_DIR)/%.o: src/%.c $(HEADERS)
-	$(CC) -c $(CFLAGS) -Iinclude -o $@ $(FILE_FLAG) $<
+# Test executable.
+$(BUILD_DIR)/test/$(WREN): $(TEST_OBJECTS) $(VM_OBJECTS) $(BUILD_DIR)/cli/io.o $(BUILD_DIR)/cli/vm.o
+	@printf "%10s %-30s %s\n" $(CC) $@ "$(C_OPTIONS)"
+	@mkdir -p $(BUILD_DIR)/test
+	@$(CC) $(CFLAGS) -o $@ $^ -lm
+
+# CLI object files.
+$(BUILD_DIR)/cli/%.o: src/cli/%.c $(CLI_HEADERS) $(VM_HEADERS)
+	@printf "%10s %-30s %s\n" $(CC) $< "$(C_OPTIONS)"
+	@mkdir -p $(BUILD_DIR)/cli
+	@$(CC) -c $(CFLAGS) -Isrc/include -o $@ $(FILE_FLAG) $<
+
+# VM object files.
+$(BUILD_DIR)/vm/%.o: src/vm/%.c $(VM_HEADERS)
+	@printf "%10s %-30s %s\n" $(CC) $< "$(C_OPTIONS)"
+	@mkdir -p $(BUILD_DIR)/vm
+	@$(CC) -c $(CFLAGS) -Isrc/include -o $@ $(FILE_FLAG) $<
+
+# Test object files.
+$(BUILD_DIR)/test/%.o: test/api/%.c $(VM_HEADERS)
+	@printf "%10s %-30s %s\n" $(CC) $< "$(C_OPTIONS)"
+	@mkdir -p $(dir $@)
+	@$(CC) -c $(CFLAGS) -Isrc/include -Isrc/cli -o $@ $(FILE_FLAG) $<
+
+.PHONY: all test

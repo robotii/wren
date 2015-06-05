@@ -10,9 +10,37 @@ import re
 import subprocess
 import sys
 
-# Runs the tests.
+# Runs the benchmarks.
+#
+# It runs several benchmarks across several languages. For each
+# benchmark/language pair, it runs a number of trials. Each trial is one run of
+# a single benchmark script. It spawns a process and runs the script. The
+# script itself is expected to output some result which this script validates
+# to ensure the benchmark is running correctly. Then the benchmark prints an
+# elapsed time. The benchmark is expected to do the timing itself and only time
+# the interesting code under test.
+#
+# This script then runs several trials and takes the best score. (It does
+# multiple trials to account for random variance in running time coming from
+# OS, CPU rate-limiting, etc.) It takes the best time on the assumption that
+# that represents the language's ideal performance and any variance coming from
+# the OS will just slow it down.
+#
+# After running a series of trials the benchmark runner will compare all of the
+# language's performance for a given benchmark. It compares by running time
+# and score, which is just the inverse running time.
+#
+# For Wren benchmarks, it can also compare against a "baseline". That's a
+# recorded result of a previous run of the Wren benchmarks. This is useful --
+# critical, actually -- for seeing how Wren performance changes. Generating a
+# set of baselines before a change to the VM and then comparing those to the
+# performance after a change is how we track improvements and regressions.
+#
+# To generate a baseline file, run this script with "--generate-baseline".
+
 WREN_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-BENCHMARK_DIR = os.path.join(WREN_DIR, 'benchmark')
+WREN_BIN = os.path.join(WREN_DIR, 'bin')
+BENCHMARK_DIR = os.path.join(WREN_DIR, 'test', 'benchmark')
 
 # How many times to run a given benchmark.
 NUM_TRIALS = 10
@@ -48,8 +76,10 @@ BENCHMARK("map_numeric", r"""500000500000""")
 
 BENCHMARK("map_string", r"""3645600""")
 
+BENCHMARK("string_equals", r"""3000000""")
+
 LANGUAGES = [
-  ("wren",           [os.path.join(WREN_DIR, 'wren')], ".wren"),
+  ("wren",           [os.path.join(WREN_BIN, 'wren')], ".wren"),
   ("lua",            ["lua"],                          ".lua"),
   ("luajit (-joff)", ["luajit", "-joff"],              ".lua"),
   ("python",         ["python"],                       ".py"),
@@ -59,20 +89,22 @@ LANGUAGES = [
 
 results = {}
 
+if sys.platform == 'win32':
+  GREEN = NORMAL = RED = YELLOW = ''
+else:
+  GREEN = '\033[32m'
+  NORMAL = '\033[0m'
+  RED = '\033[31m'
+  YELLOW = '\033[33m'
+
 def green(text):
-  if sys.platform == 'win32':
-    return text
-  return '\033[32m' + text + '\033[0m'
+  return GREEN + text + NORMAL
 
 def red(text):
-  if sys.platform == 'win32':
-    return text
-  return '\033[31m' + text + '\033[0m'
+  return RED + text + NORMAL
 
 def yellow(text):
-  if sys.platform == 'win32':
-    return text
-  return '\033[33m' + text + '\033[0m'
+  return YELLOW + text + NORMAL
 
 
 def get_score(time):
@@ -82,6 +114,20 @@ def get_score(time):
   to have benchmark results where faster = bigger number.
   """
   return 1000.0 / time
+
+
+def standard_deviation(times):
+  """
+  Calculates the standard deviation of a list of numbers.
+  """
+  mean = sum(times) / len(times)
+
+  # Sum the squares of the differences from the mean.
+  result = 0
+  for time in times:
+    result += (time - mean) ** 2
+
+  return math.sqrt(result / len(times))
 
 
 def run_trial(benchmark, language):
@@ -121,6 +167,7 @@ def run_benchmark_language(benchmark, language, benchmark_result):
 
   times = []
   for i in range(0, NUM_TRIALS):
+    sys.stdout.flush()
     time = run_trial(benchmark, language)
     if not time:
       return
@@ -151,7 +198,10 @@ def run_benchmark_language(benchmark, language, benchmark_result):
     if ratio < 95:
       comparison = red(comparison)
 
-  print(" {:5.0f}  {:4.2f}s  {:s}".format(score, best, comparison))
+  print(" {:4.2f}s {:4.4f} {:s}".format(
+      best,
+      standard_deviation(times),
+      comparison))
 
   benchmark_result[language[0]] = {
     "desc": name,
@@ -162,7 +212,7 @@ def run_benchmark_language(benchmark, language, benchmark_result):
   return score
 
 
-def run_benchmark(benchmark, languages):
+def run_benchmark(benchmark, languages, graph):
   """Runs one benchmark for the given languages (or all of them)."""
 
   benchmark_result = {}
@@ -174,7 +224,7 @@ def run_benchmark(benchmark, languages):
       num_languages += 1
       run_benchmark_language(benchmark, language, benchmark_result)
 
-  if num_languages > 1:
+  if num_languages > 1 and graph:
     graph_results(benchmark_result)
 
 
@@ -271,6 +321,9 @@ def main():
   parser.add_argument("--generate-baseline",
       action="store_true",
       help="Generate a baseline file")
+  parser.add_argument("--graph",
+      action="store_true",
+      help="Display graph results.")
   parser.add_argument("-l", "--language",
       action="append",
       help="Which language(s) to run benchmarks for")
@@ -289,7 +342,7 @@ def main():
   # Run the benchmarks.
   for benchmark in BENCHMARKS:
     if benchmark[0] == args.benchmark or args.benchmark == "all":
-      run_benchmark(benchmark, args.language)
+      run_benchmark(benchmark, args.language, args.graph)
 
   if args.output_html:
     print_html()

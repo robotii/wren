@@ -1,26 +1,60 @@
+class Bool {}
+class Fiber {}
+class Fn {}
+class Null {}
+class Num {}
+
 class Sequence {
-  map(f) {
-    var result = new List
-    for (element in this) {
-      result.add(f.call(element))
-    }
-    return result
-  }
-
-  where(f) {
-    var result = new List
-    for (element in this) {
-      if (f.call(element)) result.add(element)
-    }
-    return result
-  }
-
   all(f) {
+    var result = true
     for (element in this) {
-      if (!f.call(element)) return false
+      result = f.call(element)
+      if (!result) return result
     }
-    return true
+    return result
   }
+
+  any(f) {
+    var result = false
+    for (element in this) {
+      result = f.call(element)
+      if (result) return result
+    }
+    return result
+  }
+
+  contains(element) {
+    for (item in this) {
+      if (element == item) return true
+    }
+    return false
+  }
+
+  count {
+    var result = 0
+    for (element in this) {
+      result = result + 1
+    }
+    return result
+  }
+
+  count(f) {
+    var result = 0
+    for (element in this) {
+      if (f.call(element)) result = result + 1
+    }
+    return result
+  }
+
+  each(f) {
+    for (element in this) {
+      f.call(element)
+    }
+  }
+
+  map(transformation) { new MapSequence(this, transformation) }
+
+  where(predicate) { new WhereSequence(this, predicate) }
 
   reduce(acc, f) {
     for (element in this) {
@@ -56,9 +90,55 @@ class Sequence {
 
     return result
   }
+
+  toList {
+    var result = new List
+    for (element in this) {
+      result.add(element)
+    }
+    return result
+  }
 }
 
-class String is Sequence {}
+class MapSequence is Sequence {
+  new(sequence, fn) {
+    _sequence = sequence
+    _fn = fn
+  }
+
+  iterate(iterator) { _sequence.iterate(iterator) }
+  iteratorValue(iterator) { _fn.call(_sequence.iteratorValue(iterator)) }
+}
+
+class WhereSequence is Sequence {
+  new(sequence, fn) {
+    _sequence = sequence
+    _fn = fn
+  }
+
+  iterate(iterator) {
+    while (iterator = _sequence.iterate(iterator)) {
+      if (_fn.call(_sequence.iteratorValue(iterator))) break
+    }
+    return iterator
+  }
+
+  iteratorValue(iterator) { _sequence.iteratorValue(iterator) }
+}
+
+class String is Sequence {
+  bytes { new StringByteSequence(this) }
+}
+
+class StringByteSequence is Sequence {
+  new(string) {
+    _string = string
+  }
+
+  [index] { _string.byteAt(index) }
+  iterate(iterator) { _string.iterateByte_(iterator) }
+  iteratorValue(iterator) { _string.byteAt(iterator) }
+}
 
 class List is Sequence {
   addAll(other) {
@@ -76,15 +156,6 @@ class List is Sequence {
       result.add(element)
     }
     return result
-  }
-
-  contains(element) {
-    for (item in this) {
-      if (element == item) {
-        return true
-      }
-    }
-    return false
   }
 }
 
